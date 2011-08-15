@@ -65,13 +65,18 @@ class ProductImport < ActiveRecord::Base
           if p = Product.find(:first, :conditions => ["#{field} = ?", row[col[field.to_sym]]])
             p.update_attribute(:deleted_at, nil) if p.deleted_at #Un-delete product if it is there
             p.variants.each { |variant| variant.update_attribute(:deleted_at, nil) }
-            create_variant_for(p, :with => product_information)
+            v = create_variant_for(p, :with => product_information)
           else
-            next unless create_product_using(product_information)
+            next unless p = create_product_using(product_information)
+            v = p.master
           end
         else
-          next unless create_product_using(product_information)
+          next unless p = create_product_using(product_information)
+          v = p.master
         end
+
+        after_variant_saved(v, product_information)
+
       end
 
       if IMPORT_PRODUCT_SETTINGS[:destroy_original_products]
@@ -138,6 +143,7 @@ class ProductImport < ActiveRecord::Base
 
       #Log a success message
       log("Variant of SKU #{variant.sku} successfully imported.\n")
+      return variant
     else
       log("A variant could not be imported - here is the information we have:\n" +
           "#{pp options[:with]}, :error")
@@ -210,7 +216,7 @@ class ProductImport < ActiveRecord::Base
       #Log a success message
       log("#{product.name} successfully imported.\n")
     end
-    return true
+    return product
   end
 
   # get_column_mappings
@@ -336,6 +342,9 @@ class ProductImport < ActiveRecord::Base
   #      end
   #    end
   def after_product_built(product, params_hash)
+  end
+
+  def after_variant_saved(variant, params_hash)
   end
 end
 
