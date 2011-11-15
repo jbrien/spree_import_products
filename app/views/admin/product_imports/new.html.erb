@@ -1,3 +1,7 @@
+<%= render :partial => 'admin/shared/product_sub_menu' %>
+
+<%= render 'shared/error_messages', :target => @product %>
+
 <h2><%= t('form.product_import.heading') %></h2>
 
 <%= render "shared/error_messages", :target => @product_import %>
@@ -15,3 +19,31 @@
 </p>
 
 <% end %>
+
+<h3>CSV requirements</h3>
+<p>The following columns are required in in this order for the product importer to work properly:
+  <ul>
+    <li>NAME (required)</li>
+    <li>DESCRIPTION </li>
+    <li>SKU (required) - This can be duplicated and reused as a variation will automatically be created if the importer finds a matching SKU</li>
+    <li>MASTER_PRICE (required)</li>
+    <li>COST_PRICE </li>
+    <li>WEIGHT </li>
+    <li>HEIGHT </li>
+    <li>WIDTH </li>
+    <li>DEPTH </li>
+    <li>COLOR </li>
+    <li>COLOR_CODE </li>
+    <li>ENERGY_STAR </li>
+    <li>NBL_CODE </li>
+    <li>FREE_DELIVERY </li>
+    <li>META_DESCRIPTION </li>
+    <li>META_KEYWORDS </li>
+    <li>PERMALINK </li>
+    <li>COUNT_ON_HAND - will be zero (0) if not included</li>
+    <li>CATEGORY </li>
+    <li>BRAND </li>
+    <li>FILES - Should be a list of comma separated URLs or uploaded to public/product_files and referenced relative to that root (no leading slash)</li>
+  </ul>
+Empty columns still need to be maintained as just 2 commas
+</p>

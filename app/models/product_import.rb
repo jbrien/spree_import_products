@@ -70,6 +70,7 @@ class ProductImport < ActiveRecord::Base
             next unless p = create_product_using(product_information)
             v = p.master
           end
+          #log("Importing products for #{p.to_yaml}")
         else
           next unless p = create_product_using(product_information)
           v = p.master
@@ -110,6 +111,7 @@ class ProductImport < ActiveRecord::Base
     #Remap the options - oddly enough, Spree's product model has master_price and cost_price, while
     #variant has price and cost_price.
     options[:with][:price] = options[:with].delete(:master_price)
+    options[:with][:count_on_hand] = 0 if options[:with][:count_on_hand].nil?
 
     #First, set the primitive fields on the object (prices, etc.)
     options[:with].each do |field, value|
@@ -136,9 +138,10 @@ class ProductImport < ActiveRecord::Base
         associate_product_with_taxon(variant.product, field.to_s, options[:with][field.to_sym])
       end
 
-      #Finally, attach any images that have been specified
-      IMPORT_PRODUCT_SETTINGS[:image_fields].each do |field|
-        find_and_attach_image_to(variant, options[:with][field.to_sym])
+      #attach any images that have been specified
+      IMPORT_PRODUCT_SETTINGS[:asset_field].each do |field|
+        #find_and_attach_image_to(product, params_hash[field.to_sym])
+        get_attachment_for(variant, options[:with][field.to_sym])
       end
 
       #Log a success message
@@ -158,7 +161,6 @@ class ProductImport < ActiveRecord::Base
   # It also logs throughout the method to try and give some indication of process.
   def create_product_using(params_hash)
     product = Product.new
-
     #The product is inclined to complain if we just dump all params
     # into the product (including images and taxonomies).
     # What this does is only assigns values to products if the product accepts that field.
@@ -193,8 +195,9 @@ class ProductImport < ActiveRecord::Base
       end
 
       #Finally, attach any images that have been specified
-      IMPORT_PRODUCT_SETTINGS[:image_fields].each do |field|
-        find_and_attach_image_to(product, params_hash[field.to_sym])
+      IMPORT_PRODUCT_SETTINGS[:asset_field].each do |field|
+        #find_and_attach_image_to(product, params_hash[field.to_sym])
+        get_attachment_for(product, params_hash[field.to_sym])
       end
 
       if IMPORT_PRODUCT_SETTINGS[:multi_domain_importing] && product.respond_to?(:stores)
@@ -251,17 +254,26 @@ class ProductImport < ActiveRecord::Base
 
 
   ### IMAGE HELPERS ###
+  def get_attachment_for(product_or_variant, filename)
+    return if filename.blank?
 
+    #The file can be fetched from an HTTP or local source - either method returns a Tempfile
+    file = filename =~ /\Ahttp[s]*:\/\// ? fetch_remote_file(filename) : fetch_local_file(filename)
+
+    if file
+      File.extname(file) == ".pdf" ?
+          find_and_attach_document_to(product_or_variant, file) :
+          find_and_attach_image_to(product_or_variant, file)
+    end
+
+  end
   # find_and_attach_image_to
   # This method attaches images to products. The images may come
   # from a local source (i.e. on disk), or they may be online (HTTP/HTTPS).
   def find_and_attach_image_to(product_or_variant, filename)
-    return if filename.blank?
 
-    #The image can be fetched from an HTTP or local source - either method returns a Tempfile
-    file = filename =~ /\Ahttp[s]*:\/\// ? fetch_remote_image(filename) : fetch_local_image(filename)
     #An image has an attachment (the image file) and some object which 'views' it
-    product_image = Image.new({:attachment => file,
+    product_image = Image.new({:attachment => filename,
                               :viewable => product_or_variant,
                               :position => product_or_variant.images.length
                               })
@@ -269,26 +281,34 @@ class ProductImport < ActiveRecord::Base
     product_or_variant.images << product_image if product_image.save
   end
 
+  def find_and_attach_document_to(product_or_variant, filename)
+    #An image has an attachment (the image file) and some object which 'views' it
+    product_document = Doc.new({:attachment => filename})
+
+    product_or_variant.docs << product_document if product_document.save
+  end
+
   # This method is used when we have a set location on disk for
   # images, and the file is accessible to the script.
   # It is basically just a wrapper around basic File IO methods.
-  def fetch_local_image(filename)
-    filename = IMPORT_PRODUCT_SETTINGS[:product_image_path] + filename
-    unless File.exists?(filename) && File.readable?(filename)
-      log("Image #{filename} was not found on the server, so this image was not imported.", :warn)
-      return nil
-    else
-      return File.open(filename, 'rb')
+  def fetch_local_file(filepath)
+    filepath.split(",").each do |fp|
+      filename = IMPORT_PRODUCT_SETTINGS[:product_image_path] + fp
+      unless File.exists?(filename) && File.readable?(filename)
+        log("Image #{filename} was not found on the server, so this image was not imported.", :warn)
+        return nil
+      else
+        return File.open(filename, 'rb')
+      end
     end
   end
-
 
   #This method can be used when the filename matches the format of a URL.
   # It uses open-uri to fetch the file, returning a Tempfile object if it
   # is successful.
   # If it fails, it in the first instance logs the HTTP error (404, 500 etc)
   # If it fails altogether, it logs it and exits the method.
-  def fetch_remote_image(filename)
+  def fetch_remote_file(filename)
     begin
       open(filename)
     rescue OpenURI::HTTPError => error
